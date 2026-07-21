@@ -12,8 +12,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             refreshCallback: { [weak self] in
                 self?.triggerRefresh()
             },
-            settingsSavedCallback: { [weak self] org, teams, interval in
-                self?.handleSettingsSaved(org: org, teams: teams, interval: interval)
+            settingsSavedCallback: { [weak self] org, teams, interval, soundSettings in
+                self?.handleSettingsSaved(org: org, teams: teams, interval: interval, soundSettings: soundSettings)
             }
         )
 
@@ -68,7 +68,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func handleSettingsSaved(org: String, teams: String, interval: TimeInterval) {
+    private func handleSettingsSaved(org: String, teams: String, interval: TimeInterval, soundSettings: NotificationSoundSettings) {
         let config = Config.shared
         let parsedTeams = Config.parseTeamSlugs(teams)
         let orgChanged = config.teamOrg != org || config.teamSlugs != parsedTeams
@@ -76,8 +76,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         config.teamOrg = org
         config.teamSlugs = parsedTeams
         config.pollingIntervalSeconds = interval
+        config.notificationSoundSettings = soundSettings
 
-        log("[Settings] Saved: org=\(org), teams=\(parsedTeams.joined(separator: ",")), interval=\(Int(interval))s")
+        log("[Settings] Saved: org=\(org), teams=\(parsedTeams.joined(separator: ",")), interval=\(Int(interval))s, sounds=you:\(soundSettings.forYou),team:\(soundSettings.team),others:\(soundSettings.others)")
 
         if orgChanged, let service = githubService {
             Task { await service.resetCache() }

@@ -1,5 +1,11 @@
 import Foundation
 
+struct NotificationSoundSettings {
+    let forYou: Bool
+    let team: Bool
+    let others: Bool
+}
+
 // MARK: - Token Helper
 
 final class TokenHelper {
@@ -56,6 +62,10 @@ final class Config {
         static let pollingInterval = "config.pollingIntervalSeconds"
         static let mutedPRIds = "config.mutedPRIds"
         static let clickedPRIds = "config.clickedPRIds"
+        static let notificationSoundEnabled = "config.notificationSoundEnabled"
+        static let notificationSoundForYou = "config.notificationSoundForYou"
+        static let notificationSoundTeam = "config.notificationSoundTeam"
+        static let notificationSoundOthers = "config.notificationSoundOthers"
     }
 
     var currentUser: String {
@@ -114,6 +124,31 @@ final class Config {
 
     func markPRClicked(_ id: Int) { var ids = clickedPRIds; ids.insert(id); clickedPRIds = ids }
     func isPRClicked(_ id: Int) -> Bool { clickedPRIds.contains(id) }
+
+    var notificationSoundSettings: NotificationSoundSettings {
+        get {
+            NotificationSoundSettings(
+                forYou: notificationSoundValue(forKey: Keys.notificationSoundForYou),
+                team: notificationSoundValue(forKey: Keys.notificationSoundTeam),
+                others: notificationSoundValue(forKey: Keys.notificationSoundOthers)
+            )
+        }
+        set {
+            defaults.set(newValue.forYou, forKey: Keys.notificationSoundForYou)
+            defaults.set(newValue.team, forKey: Keys.notificationSoundTeam)
+            defaults.set(newValue.others, forKey: Keys.notificationSoundOthers)
+        }
+    }
+
+    private func notificationSoundValue(forKey key: String) -> Bool {
+        if defaults.object(forKey: key) != nil {
+            return defaults.bool(forKey: key)
+        }
+        if defaults.object(forKey: Keys.notificationSoundEnabled) != nil {
+            return defaults.bool(forKey: Keys.notificationSoundEnabled)
+        }
+        return true
+    }
 
     var isConfigured: Bool {
         !teamOrg.isEmpty && !teamSlugs.isEmpty

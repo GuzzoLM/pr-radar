@@ -1,5 +1,24 @@
 import AppKit
 
+final class PointerButton: NSButton {
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        addCursorRect(bounds, cursor: .pointingHand)
+    }
+}
+
+final class FocusableTextField: NSTextField {
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        addCursorRect(bounds, cursor: .iBeam)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        window?.makeFirstResponder(self)
+        super.mouseDown(with: event)
+    }
+}
+
 enum MenuTab: Int {
     case forYou = 0
     case team = 1
@@ -49,7 +68,7 @@ class TabBarView: NSView {
             let textWidth = (title as NSString).size(withAttributes: [.font: font]).width
             let buttonWidth = textWidth + 16
 
-            let btn = NSButton(frame: NSRect(x: x, y: 2, width: buttonWidth, height: 24))
+            let btn = PointerButton(frame: NSRect(x: x, y: 2, width: buttonWidth, height: 24))
             btn.title = title
             btn.bezelStyle = .recessed
             btn.setButtonType(.pushOnPushOff)
@@ -74,16 +93,19 @@ class TabBarView: NSView {
 // MARK: - Settings View (custom NSView so clicking doesn't close the menu)
 
 class SettingsView: NSView {
-    var onSave: ((String, String, TimeInterval) -> Void)?
+    var onSave: ((String, String, TimeInterval, NotificationSoundSettings) -> Void)?
     var onBack: (() -> Void)?
 
-    private let orgField = NSTextField()
-    private let teamField = NSTextField()
-    private let intervalField = NSTextField()
+    private let orgField = FocusableTextField()
+    private let teamField = FocusableTextField()
+    private let intervalField = FocusableTextField()
+    private let forYouSoundToggle = PointerButton()
+    private let teamSoundToggle = PointerButton()
+    private let othersSoundToggle = PointerButton()
     private let feedbackLabel = NSTextField(labelWithString: "")
 
     private let viewWidth: CGFloat = 420
-    private let viewHeight: CGFloat = 210
+    private let viewHeight: CGFloat = 300
 
     override var isFlipped: Bool { true }
 
@@ -103,6 +125,10 @@ class SettingsView: NSView {
         orgField.stringValue = config.teamOrg
         teamField.stringValue = config.teamSlugsText
         intervalField.stringValue = "\(Int(config.pollingIntervalSeconds))"
+        let sounds = config.notificationSoundSettings
+        forYouSoundToggle.state = sounds.forYou ? .on : .off
+        teamSoundToggle.state = sounds.team ? .on : .off
+        othersSoundToggle.state = sounds.others ? .on : .off
         feedbackLabel.stringValue = ""
     }
 
@@ -112,7 +138,7 @@ class SettingsView: NSView {
         var y: CGFloat = 8
 
         // Back button + title
-        let backBtn = NSButton(title: "< Back", target: self, action: #selector(backClicked))
+        let backBtn = PointerButton(title: "< Back", target: self, action: #selector(backClicked))
         backBtn.bezelStyle = .recessed
         backBtn.font = NSFont.systemFont(ofSize: 11)
         backBtn.frame = NSRect(x: pad, y: y, width: 55, height: 20)
@@ -151,8 +177,25 @@ class SettingsView: NSView {
         addSubview(intervalField)
         y += 32
 
+        // Notification sounds
+        addLabel("Play system sound for new PRs:", x: pad, y: y, width: fieldW)
+        y += 18
+        for (toggle, title) in [
+            (forYouSoundToggle, "Assigned directly to you"),
+            (teamSoundToggle, "Assigned to your teams"),
+            (othersSoundToggle, "Other review activity"),
+        ] {
+            toggle.title = title
+            toggle.setButtonType(.switch)
+            toggle.font = NSFont.systemFont(ofSize: 12)
+            toggle.frame = NSRect(x: pad, y: y, width: fieldW, height: 22)
+            addSubview(toggle)
+            y += 24
+        }
+        y += 2
+
         // Save button + feedback
-        let saveBtn = NSButton(title: "Save", target: self, action: #selector(saveClicked))
+        let saveBtn = PointerButton(title: "Save", target: self, action: #selector(saveClicked))
         saveBtn.bezelStyle = .rounded
         saveBtn.frame = NSRect(x: viewWidth - pad - 60, y: y, width: 60, height: 24)
         addSubview(saveBtn)
@@ -184,7 +227,16 @@ class SettingsView: NSView {
             self?.feedbackLabel.stringValue = ""
         }
 
-        onSave?(org, team, interval)
+        onSave?(
+            org,
+            team,
+            interval,
+            NotificationSoundSettings(
+                forYou: forYouSoundToggle.state == .on,
+                team: teamSoundToggle.state == .on,
+                others: othersSoundToggle.state == .on
+            )
+        )
     }
 
     @objc private func backClicked() {
@@ -198,7 +250,7 @@ class PRMenuItemView: NSView {
     var onPRClicked: (() -> Void)?
     var onMuteToggled: (() -> Void)?
 
-    private let muteBtn = NSButton()
+    private let muteBtn = PointerButton()
     private let textField = NSTextField()
     private let unseenDot = NSTextField(labelWithString: "●")
     private var isHovered = false
@@ -246,6 +298,11 @@ class PRMenuItemView: NSView {
 
     override var intrinsicContentSize: NSSize {
         NSSize(width: frame.width, height: 42)
+    }
+
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        addCursorRect(bounds, cursor: .pointingHand)
     }
 
     override func updateTrackingAreas() {
@@ -310,6 +367,11 @@ class CollapsibleSectionHeaderView: NSView {
         NSSize(width: frame.width, height: 24)
     }
 
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        addCursorRect(bounds, cursor: .pointingHand)
+    }
+
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
         let chevron = isExpanded ? "▼" : "▶"
@@ -347,9 +409,10 @@ class MenuManager: NSObject {
     private var showingSettings: Bool = false
     private var settingsView: SettingsView!
     private var settingsMenuItem: NSMenuItem!
-    private var settingsSavedCallback: ((String, String, TimeInterval) -> Void)?
+    private var settingsSavedCallback: ((String, String, TimeInterval, NotificationSoundSettings) -> Void)?
     private var isMutedSectionExpanded: Bool = false
     private var isReviewedSectionExpanded: Bool = false
+    private var knownIncomingPRIds: Set<Int>?
 
     private var actionableForYouCount: Int {
         forYouPRs.filter {
@@ -383,7 +446,7 @@ class MenuManager: NSObject {
         byYouPRs.contains { isPRUnseen($0) }
     }
 
-    func setup(refreshCallback: @escaping () -> Void, settingsSavedCallback: @escaping (String, String, TimeInterval) -> Void) {
+    func setup(refreshCallback: @escaping () -> Void, settingsSavedCallback: @escaping (String, String, TimeInterval, NotificationSoundSettings) -> Void) {
         self.refreshCallback = refreshCallback
         self.settingsSavedCallback = settingsSavedCallback
 
@@ -408,9 +471,9 @@ class MenuManager: NSObject {
         tabSeparator = NSMenuItem.separator()
 
         // Settings view
-        settingsView = SettingsView(frame: NSRect(x: 0, y: 0, width: 420, height: 210))
-        settingsView.onSave = { [weak self] org, team, interval in
-            self?.settingsSavedCallback?(org, team, interval)
+        settingsView = SettingsView(frame: NSRect(x: 0, y: 0, width: 420, height: 300))
+        settingsView.onSave = { [weak self] org, team, interval, soundSettings in
+            self?.settingsSavedCallback?(org, team, interval, soundSettings)
         }
         settingsView.onBack = { [weak self] in
             self?.showingSettings = false
@@ -436,6 +499,22 @@ class MenuManager: NSObject {
     }
 
     func updatePRs(forYou: [MonitoredPR], team: [MonitoredPR], others: [MonitoredPR], byYou: [MonitoredPR], lastChecked: Date) {
+        let forYouIds = Set(forYou.map(\.id))
+        let teamIds = Set(team.map(\.id))
+        let otherIds = Set(others.map(\.id))
+        let incomingIds = forYouIds.union(teamIds).union(otherIds)
+        if let knownIds = knownIncomingPRIds {
+            let newIds = incomingIds.subtracting(knownIds)
+            let sounds = Config.shared.notificationSoundSettings
+            let shouldPlaySound = (sounds.forYou && !newIds.isDisjoint(with: forYouIds))
+                || (sounds.team && !newIds.isDisjoint(with: teamIds))
+                || (sounds.others && !newIds.isDisjoint(with: otherIds))
+            if shouldPlaySound {
+                NSSound.beep()
+            }
+        }
+        knownIncomingPRIds = incomingIds
+
         self.forYouPRs = forYou
         self.teamPRs = team
         self.otherPRs = others
