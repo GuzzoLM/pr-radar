@@ -8,9 +8,9 @@ final class Log {
     private let path: String
 
     private init() {
-        let logDir = NSHomeDirectory() + "/Library/Logs/pr-monitor"
+        let logDir = NSHomeDirectory() + "/Library/Logs/PRadar"
         try? FileManager.default.createDirectory(atPath: logDir, withIntermediateDirectories: true)
-        path = logDir + "/pr-monitor.log"
+        path = logDir + "/PRadar.log"
         FileManager.default.createFile(atPath: path, contents: nil, attributes: [.posixPermissions: 0o600])
         fileHandle = FileHandle(forWritingAtPath: path)
         fileHandle?.seekToEndOfFile()

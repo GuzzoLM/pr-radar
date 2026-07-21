@@ -3,10 +3,10 @@ set -e
 
 cd "$(dirname "$0")"
 
-echo "Building pr-monitor..."
+echo "Building PRadar..."
 swift build -c release
 
-BINARY=".build/release/pr-monitor"
+BINARY=".build/release/PRadar"
 
 if [ ! -f "$BINARY" ]; then
     echo "Build failed - binary not found."
@@ -23,6 +23,6 @@ echo ""
 read -p "Run now? (y/n) " -n 1 -r
 echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
-    echo "Starting pr-monitor..."
+    echo "Starting PRadar..."
     "$BINARY"
 fi

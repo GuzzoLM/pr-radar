@@ -2,13 +2,13 @@
 import PackageDescription
 
 let package = Package(
-    name: "pr-monitor",
+    name: "PRadar",
     platforms: [
         .macOS(.v13)
     ],
     targets: [
         .executableTarget(
-            name: "pr-monitor",
+            name: "PRadar",
             path: "Sources/pr-monitor"
         )
     ]

@@ -1,4 +1,4 @@
-# PR Monitor
+# PRadar
 
 A lightweight macOS menu bar app that monitors GitHub pull requests assigned to you.
 
@@ -49,15 +49,15 @@ cd pr-monitor
 bash install.sh
 ```
 
-This builds a release binary and creates an app bundle at `/Applications/pr-monitor.app`.
+This builds a release binary and creates an app bundle at `/Applications/PRadar.app`.
 
 ## First Launch
 
-1. Open **PR Monitor** from Spotlight or `/Applications`
+1. Open **PRadar** from Spotlight or `/Applications`
 2. Click the PR icon in the menu bar
 3. Go to **Settings** and enter your GitHub organization and one or more comma-separated team slugs
 4. Click **Save** — the app starts fetching your PRs automatically
 
 ## Auto-start
 
-To launch on login: **System Settings → General → Login Items → add PR Monitor**.
+To launch on login: **System Settings → General → Login Items → add PRadar**.

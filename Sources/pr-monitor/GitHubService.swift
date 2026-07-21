@@ -30,7 +30,7 @@ actor GitHubService {
         var request = URLRequest(url: url)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/vnd.github.v3+json", forHTTPHeaderField: "Accept")
-        request.setValue("pr-monitor/1.0", forHTTPHeaderField: "User-Agent")
+        request.setValue("PRadar/1.0", forHTTPHeaderField: "User-Agent")
 
         if let lastModified = lastModifiedHeader {
             request.setValue(lastModified, forHTTPHeaderField: "If-Modified-Since")
@@ -350,7 +350,7 @@ actor GitHubService {
         var request = URLRequest(url: url)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/vnd.github.v3+json", forHTTPHeaderField: "Accept")
-        request.setValue("pr-monitor/1.0", forHTTPHeaderField: "User-Agent")
+        request.setValue("PRadar/1.0", forHTTPHeaderField: "User-Agent")
 
         let (data, response) = try await session.data(for: request)
 

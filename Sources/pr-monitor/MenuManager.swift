@@ -1,18 +1,6 @@
 import AppKit
 
-final class PointerButton: NSButton {
-    override func resetCursorRects() {
-        super.resetCursorRects()
-        addCursorRect(bounds, cursor: .pointingHand)
-    }
-}
-
 final class FocusableTextField: NSTextField {
-    override func resetCursorRects() {
-        super.resetCursorRects()
-        addCursorRect(bounds, cursor: .iBeam)
-    }
-
     override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
         super.mouseDown(with: event)
@@ -68,7 +56,7 @@ class TabBarView: NSView {
             let textWidth = (title as NSString).size(withAttributes: [.font: font]).width
             let buttonWidth = textWidth + 16
 
-            let btn = PointerButton(frame: NSRect(x: x, y: 2, width: buttonWidth, height: 24))
+            let btn = NSButton(frame: NSRect(x: x, y: 2, width: buttonWidth, height: 24))
             btn.title = title
             btn.bezelStyle = .recessed
             btn.setButtonType(.pushOnPushOff)
@@ -99,9 +87,9 @@ class SettingsView: NSView {
     private let orgField = FocusableTextField()
     private let teamField = FocusableTextField()
     private let intervalField = FocusableTextField()
-    private let forYouSoundToggle = PointerButton()
-    private let teamSoundToggle = PointerButton()
-    private let othersSoundToggle = PointerButton()
+    private let forYouSoundToggle = NSButton()
+    private let teamSoundToggle = NSButton()
+    private let othersSoundToggle = NSButton()
     private let feedbackLabel = NSTextField(labelWithString: "")
 
     private let viewWidth: CGFloat = 420
@@ -138,7 +126,7 @@ class SettingsView: NSView {
         var y: CGFloat = 8
 
         // Back button + title
-        let backBtn = PointerButton(title: "< Back", target: self, action: #selector(backClicked))
+        let backBtn = NSButton(title: "< Back", target: self, action: #selector(backClicked))
         backBtn.bezelStyle = .recessed
         backBtn.font = NSFont.systemFont(ofSize: 11)
         backBtn.frame = NSRect(x: pad, y: y, width: 55, height: 20)
@@ -195,7 +183,7 @@ class SettingsView: NSView {
         y += 2
 
         // Save button + feedback
-        let saveBtn = PointerButton(title: "Save", target: self, action: #selector(saveClicked))
+        let saveBtn = NSButton(title: "Save", target: self, action: #selector(saveClicked))
         saveBtn.bezelStyle = .rounded
         saveBtn.frame = NSRect(x: viewWidth - pad - 60, y: y, width: 60, height: 24)
         addSubview(saveBtn)
@@ -248,9 +236,11 @@ class SettingsView: NSView {
 
 class PRMenuItemView: NSView {
     var onPRClicked: (() -> Void)?
+    var onMarkRead: (() -> Void)?
     var onMuteToggled: (() -> Void)?
 
-    private let muteBtn = PointerButton()
+    private let readBtn = NSButton()
+    private let muteBtn = NSButton()
     private let textField = NSTextField()
     private let unseenDot = NSTextField(labelWithString: "●")
     private var isHovered = false
@@ -269,15 +259,30 @@ class PRMenuItemView: NSView {
         textField.cell?.wraps = true
         textField.cell?.truncatesLastVisibleLine = true
         textField.attributedStringValue = attributedText
-        textField.frame = NSRect(x: 16, y: 4, width: width - 72, height: 34)
+        textField.frame = NSRect(x: 16, y: 4, width: width - 96, height: 34)
         addSubview(textField)
 
         // Unseen green dot
         unseenDot.font = NSFont.systemFont(ofSize: 8)
         unseenDot.textColor = .systemGreen
-        unseenDot.frame = NSRect(x: width - 52, y: 16, width: 12, height: 12)
+        unseenDot.frame = NSRect(x: width - 76, y: 16, width: 12, height: 12)
         unseenDot.isHidden = !isUnseen
         addSubview(unseenDot)
+
+        // Mark as read button
+        if let image = NSImage(systemSymbolName: "checkmark.circle", accessibilityDescription: "Mark as read") {
+            readBtn.image = image
+        }
+        readBtn.toolTip = "Mark as read"
+        readBtn.bezelStyle = .recessed
+        readBtn.isBordered = false
+        readBtn.imageScaling = .scaleProportionallyDown
+        readBtn.frame = NSRect(x: width - 58, y: 11, width: 20, height: 20)
+        readBtn.target = self
+        readBtn.action = #selector(readBtnClicked)
+        readBtn.contentTintColor = .secondaryLabelColor
+        readBtn.isHidden = !isUnseen
+        addSubview(readBtn)
 
         // Mute button
         let iconName = isMuted ? "bell.slash" : "bell.fill"
@@ -300,11 +305,6 @@ class PRMenuItemView: NSView {
         NSSize(width: frame.width, height: 42)
     }
 
-    override func resetCursorRects() {
-        super.resetCursorRects()
-        addCursorRect(bounds, cursor: .pointingHand)
-    }
-
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         for area in trackingAreas { removeTrackingArea(area) }
@@ -317,19 +317,21 @@ class PRMenuItemView: NSView {
 
     override func mouseEntered(with event: NSEvent) {
         isHovered = true
+        readBtn.contentTintColor = .labelColor
         muteBtn.contentTintColor = .labelColor
         needsDisplay = true
     }
 
     override func mouseExited(with event: NSEvent) {
         isHovered = false
+        readBtn.contentTintColor = .secondaryLabelColor
         muteBtn.contentTintColor = .secondaryLabelColor
         needsDisplay = true
     }
 
     override func mouseUp(with event: NSEvent) {
         let loc = convert(event.locationInWindow, from: nil)
-        if muteBtn.frame.contains(loc) { return }
+        if (!readBtn.isHidden && readBtn.frame.contains(loc)) || muteBtn.frame.contains(loc) { return }
         onPRClicked?()
     }
 
@@ -343,6 +345,10 @@ class PRMenuItemView: NSView {
 
     @objc private func muteBtnClicked() {
         onMuteToggled?()
+    }
+
+    @objc private func readBtnClicked() {
+        onMarkRead?()
     }
 }
 
@@ -365,11 +371,6 @@ class CollapsibleSectionHeaderView: NSView {
 
     override var intrinsicContentSize: NSSize {
         NSSize(width: frame.width, height: 24)
-    }
-
-    override func resetCursorRects() {
-        super.resetCursorRects()
-        addCursorRect(bounds, cursor: .pointingHand)
     }
 
     override func draw(_ dirtyRect: NSRect) {
@@ -839,6 +840,12 @@ class MenuManager: NSObject {
             }
             self?.updateIcon(count: self?.actionableForYouCount ?? 0)
             self?.reopenMenu()
+        }
+
+        prView.onMarkRead = { [weak self] in
+            Config.shared.markPRClicked(pr.id)
+            self?.updateIcon(count: self?.actionableForYouCount ?? 0)
+            self?.rebuildContentItems()
         }
 
         prView.onMuteToggled = { [weak self] in
