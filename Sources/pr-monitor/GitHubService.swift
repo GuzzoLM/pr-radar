@@ -95,13 +95,16 @@ actor GitHubService {
             await fetchTeamRepos()
         }
 
-        // Search for PRs where user is review-requested, mentioned, already reviewed, or author
+        // Search for PRs where the user or configured team is review-requested,
+        // mentioned, already reviewed, or author.
         async let reviewCandidates = searchPRs(query: "is:pr is:open review-requested:\(Config.shared.currentUser)")
+        async let teamReviewCandidates = searchPRs(query: "is:pr is:open team-review-requested:\(Config.shared.teamOrg)/\(Config.shared.teamSlug)")
         async let mentionCandidates = searchPRs(query: "is:pr is:open mentions:\(Config.shared.currentUser) org:\(Config.shared.teamOrg)")
         async let reviewedCandidates = searchPRs(query: "is:pr is:open reviewed-by:\(Config.shared.currentUser)")
         async let authoredCandidates = searchPRs(query: "is:pr is:open author:\(Config.shared.currentUser)")
 
         let reviewItems = await reviewCandidates
+        let teamReviewItems = await teamReviewCandidates
         let mentionItems = await mentionCandidates
         let reviewedItems = await reviewedCandidates
         let authoredItems = await authoredCandidates
@@ -111,6 +114,12 @@ actor GitHubService {
         var candidateMap: [String: (item: GitHubSearchItem, reason: PRReason)] = [:]
 
         for item in reviewItems {
+            let key = "\(item.repoFullName)#\(item.number)"
+            if candidateMap[key] == nil {
+                candidateMap[key] = (item, .reviewer)
+            }
+        }
+        for item in teamReviewItems {
             let key = "\(item.repoFullName)#\(item.number)"
             if candidateMap[key] == nil {
                 candidateMap[key] = (item, .reviewer)
@@ -186,7 +195,7 @@ actor GitHubService {
 
             let isPersonal = verification.isDirect || reason == .mentioned
 
-            if isPersonal{
+            if isPersonal {
                 forYou.append(pr)
             }
             else if verification.isTeam {
@@ -240,7 +249,7 @@ actor GitHubService {
         if let data = await prDetailData {
             if let detail = try? JSONDecoder().decode(GitHubPRDetail.self, from: data) {
                 isDirectlyRequested = detail.requestedReviewers.contains { $0.login == Config.shared.currentUser }
-                isTeamRequested = detail.requestedReviewers.contains { $0.login == Config.shared.teamSlug }
+                isTeamRequested = detail.requestedTeams.contains { $0.slug == Config.shared.teamSlug }
             }
         }
 
