@@ -30,7 +30,7 @@ actor GitHubService {
         var request = URLRequest(url: url)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/vnd.github.v3+json", forHTTPHeaderField: "Accept")
-        request.setValue("pr-monitor/1.0", forHTTPHeaderField: "User-Agent")
+        request.setValue("PRadar/1.0", forHTTPHeaderField: "User-Agent")
 
         if let lastModified = lastModifiedHeader {
             request.setValue(lastModified, forHTTPHeaderField: "If-Modified-Since")
@@ -76,17 +76,24 @@ actor GitHubService {
     }
 
     func fetchTeamRepos() async {
-        let path = "/orgs/\(Config.shared.teamOrg)/teams/\(Config.shared.teamSlug)/repos?per_page=100"
-        guard let data = await fetchData(path: path) else {
-            log("[Error] Failed to fetch team repos")
-            return
+        var loadedRepos = Set<String>()
+        var archivedCount = 0
+
+        for slug in Config.shared.teamSlugs {
+            let path = "/orgs/\(Config.shared.teamOrg)/teams/\(slug)/repos?per_page=100"
+            guard let data = await fetchData(path: path),
+                  let repos = try? JSONDecoder().decode([GitHubRepo].self, from: data) else {
+                log("[Error] Failed to fetch repos for team \(slug)")
+                continue
+            }
+
+            let active = repos.filter { !$0.archived }
+            loadedRepos.formUnion(active.map { $0.fullName })
+            archivedCount += repos.count - active.count
         }
 
-        if let repos = try? JSONDecoder().decode([GitHubRepo].self, from: data) {
-            let active = repos.filter { !$0.archived }
-            teamRepos = Set(active.map { $0.fullName })
-            log("[Repos] Loaded \(teamRepos.count) team repos (\(repos.count - active.count) archived excluded)")
-        }
+        teamRepos = loadedRepos
+        log("[Repos] Loaded \(teamRepos.count) repos for \(Config.shared.teamSlugs.count) teams (\(archivedCount) archived excluded)")
     }
 
     func fetchMonitoredPRs() async -> FetchResult {
@@ -95,13 +102,16 @@ actor GitHubService {
             await fetchTeamRepos()
         }
 
-        // Search for PRs where user is review-requested, mentioned, already reviewed, or author
+        // Search for PRs where the user or configured team is review-requested,
+        // mentioned, already reviewed, or author.
         async let reviewCandidates = searchPRs(query: "is:pr is:open review-requested:\(Config.shared.currentUser)")
+        async let teamReviewCandidates = searchTeamReviewPRs()
         async let mentionCandidates = searchPRs(query: "is:pr is:open mentions:\(Config.shared.currentUser) org:\(Config.shared.teamOrg)")
         async let reviewedCandidates = searchPRs(query: "is:pr is:open reviewed-by:\(Config.shared.currentUser)")
         async let authoredCandidates = searchPRs(query: "is:pr is:open author:\(Config.shared.currentUser)")
 
         let reviewItems = await reviewCandidates
+        let teamReviewItems = await teamReviewCandidates
         let mentionItems = await mentionCandidates
         let reviewedItems = await reviewedCandidates
         let authoredItems = await authoredCandidates
@@ -111,6 +121,12 @@ actor GitHubService {
         var candidateMap: [String: (item: GitHubSearchItem, reason: PRReason)] = [:]
 
         for item in reviewItems {
+            let key = "\(item.repoFullName)#\(item.number)"
+            if candidateMap[key] == nil {
+                candidateMap[key] = (item, .reviewer)
+            }
+        }
+        for item in teamReviewItems {
             let key = "\(item.repoFullName)#\(item.number)"
             if candidateMap[key] == nil {
                 candidateMap[key] = (item, .reviewer)
@@ -186,7 +202,7 @@ actor GitHubService {
 
             let isPersonal = verification.isDirect || reason == .mentioned
 
-            if isPersonal{
+            if isPersonal {
                 forYou.append(pr)
             }
             else if verification.isTeam {
@@ -223,6 +239,23 @@ actor GitHubService {
         }
     }
 
+    private func searchTeamReviewPRs() async -> [GitHubSearchItem] {
+        let org = Config.shared.teamOrg
+        return await withTaskGroup(of: [GitHubSearchItem].self) { group in
+            for slug in Config.shared.teamSlugs {
+                group.addTask {
+                    await self.searchPRs(query: "is:pr is:open team-review-requested:\(org)/\(slug)")
+                }
+            }
+
+            var items: [GitHubSearchItem] = []
+            for await results in group {
+                items.append(contentsOf: results)
+            }
+            return items
+        }
+    }
+
     // MARK: - Verification
 
     struct VerificationResult {
@@ -240,7 +273,8 @@ actor GitHubService {
         if let data = await prDetailData {
             if let detail = try? JSONDecoder().decode(GitHubPRDetail.self, from: data) {
                 isDirectlyRequested = detail.requestedReviewers.contains { $0.login == Config.shared.currentUser }
-                isTeamRequested = detail.requestedReviewers.contains { $0.login == Config.shared.teamSlug }
+                let configuredTeams = Set(Config.shared.teamSlugs)
+                isTeamRequested = detail.requestedTeams.contains { configuredTeams.contains($0.slug) }
             }
         }
 
@@ -316,7 +350,7 @@ actor GitHubService {
         var request = URLRequest(url: url)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/vnd.github.v3+json", forHTTPHeaderField: "Accept")
-        request.setValue("pr-monitor/1.0", forHTTPHeaderField: "User-Agent")
+        request.setValue("PRadar/1.0", forHTTPHeaderField: "User-Agent")
 
         let (data, response) = try await session.data(for: request)
 

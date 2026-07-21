@@ -1,5 +1,11 @@
 import Foundation
 
+struct NotificationSoundSettings {
+    let forYou: Bool
+    let team: Bool
+    let others: Bool
+}
+
 // MARK: - Token Helper
 
 final class TokenHelper {
@@ -50,10 +56,16 @@ final class Config {
     private enum Keys {
         static let currentUser = "config.currentUser"
         static let teamOrg = "config.teamOrg"
-        static let teamSlug = "config.teamSlug"
+        // Kept as a string key so existing single-team installations migrate
+        // automatically to the comma-separated multi-team format.
+        static let teamSlugs = "config.teamSlug"
         static let pollingInterval = "config.pollingIntervalSeconds"
         static let mutedPRIds = "config.mutedPRIds"
         static let clickedPRIds = "config.clickedPRIds"
+        static let notificationSoundEnabled = "config.notificationSoundEnabled"
+        static let notificationSoundForYou = "config.notificationSoundForYou"
+        static let notificationSoundTeam = "config.notificationSoundTeam"
+        static let notificationSoundOthers = "config.notificationSoundOthers"
     }
 
     var currentUser: String {
@@ -66,9 +78,26 @@ final class Config {
         set { defaults.set(newValue, forKey: Keys.teamOrg) }
     }
 
-    var teamSlug: String {
-        get { defaults.string(forKey: Keys.teamSlug) ?? "" }
-        set { defaults.set(newValue, forKey: Keys.teamSlug) }
+    var teamSlugs: [String] {
+        get { Self.parseTeamSlugs(defaults.string(forKey: Keys.teamSlugs) ?? "") }
+        set { defaults.set(Self.normalizedTeamSlugs(newValue).joined(separator: ", "), forKey: Keys.teamSlugs) }
+    }
+
+    var teamSlugsText: String {
+        teamSlugs.joined(separator: ", ")
+    }
+
+    static func parseTeamSlugs(_ value: String) -> [String] {
+        normalizedTeamSlugs(value.components(separatedBy: CharacterSet(charactersIn: ",\n")))
+    }
+
+    private static func normalizedTeamSlugs(_ values: [String]) -> [String] {
+        var seen = Set<String>()
+        return values.compactMap { value in
+            let slug = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !slug.isEmpty, seen.insert(slug).inserted else { return nil }
+            return slug
+        }
     }
 
     var pollingIntervalSeconds: TimeInterval {
@@ -96,8 +125,33 @@ final class Config {
     func markPRClicked(_ id: Int) { var ids = clickedPRIds; ids.insert(id); clickedPRIds = ids }
     func isPRClicked(_ id: Int) -> Bool { clickedPRIds.contains(id) }
 
+    var notificationSoundSettings: NotificationSoundSettings {
+        get {
+            NotificationSoundSettings(
+                forYou: notificationSoundValue(forKey: Keys.notificationSoundForYou),
+                team: notificationSoundValue(forKey: Keys.notificationSoundTeam),
+                others: notificationSoundValue(forKey: Keys.notificationSoundOthers)
+            )
+        }
+        set {
+            defaults.set(newValue.forYou, forKey: Keys.notificationSoundForYou)
+            defaults.set(newValue.team, forKey: Keys.notificationSoundTeam)
+            defaults.set(newValue.others, forKey: Keys.notificationSoundOthers)
+        }
+    }
+
+    private func notificationSoundValue(forKey key: String) -> Bool {
+        if defaults.object(forKey: key) != nil {
+            return defaults.bool(forKey: key)
+        }
+        if defaults.object(forKey: Keys.notificationSoundEnabled) != nil {
+            return defaults.bool(forKey: Keys.notificationSoundEnabled)
+        }
+        return true
+    }
+
     var isConfigured: Bool {
-        !teamOrg.isEmpty && !teamSlug.isEmpty
+        !teamOrg.isEmpty && !teamSlugs.isEmpty
     }
 }
 

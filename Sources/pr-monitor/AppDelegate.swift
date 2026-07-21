@@ -12,13 +12,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             refreshCallback: { [weak self] in
                 self?.triggerRefresh()
             },
-            settingsSavedCallback: { [weak self] org, team, interval in
-                self?.handleSettingsSaved(org: org, team: team, interval: interval)
+            settingsSavedCallback: { [weak self] org, teams, interval, soundSettings in
+                self?.handleSettingsSaved(org: org, teams: teams, interval: interval, soundSettings: soundSettings)
             }
         )
 
         if let token = TokenHelper.loadGhCliToken() {
-            log("[PRMonitor] Using token from gh CLI.")
+            log("[PRadar] Using token from gh CLI.")
             githubService = GitHubService(token: token)
             autoDetectUser()
 
@@ -27,7 +27,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 startPolling()
             }
         } else {
-            log("[PRMonitor] Could not load token from gh CLI.")
+            log("[PRadar] Could not load token from gh CLI.")
         }
     }
 
@@ -43,7 +43,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         ) { [weak self] _ in
             self?.pollCheck()
         }
-        log("[PRMonitor] Polling every \(Int(Config.shared.pollingIntervalSeconds))s.")
+        log("[PRadar] Polling every \(Int(Config.shared.pollingIntervalSeconds))s.")
     }
 
     private func pollCheck() {
@@ -53,7 +53,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             if hasNew {
                 await MainActor.run { self.triggerRefresh() }
             } else {
-                log("[PRMonitor] Skipping fetch — no new activity.")
+                log("[PRadar] Skipping fetch — no new activity.")
             }
         }
     }
@@ -63,20 +63,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         Task {
             if let login = await service.fetchCurrentUser() {
                 Config.shared.currentUser = login
-                log("[PRMonitor] Auto-detected user: \(login)")
+                log("[PRadar] Auto-detected user: \(login)")
             }
         }
     }
 
-    private func handleSettingsSaved(org: String, team: String, interval: TimeInterval) {
+    private func handleSettingsSaved(org: String, teams: String, interval: TimeInterval, soundSettings: NotificationSoundSettings) {
         let config = Config.shared
-        let orgChanged = config.teamOrg != org || config.teamSlug != team
+        let parsedTeams = Config.parseTeamSlugs(teams)
+        let orgChanged = config.teamOrg != org || config.teamSlugs != parsedTeams
 
         config.teamOrg = org
-        config.teamSlug = team
+        config.teamSlugs = parsedTeams
         config.pollingIntervalSeconds = interval
+        config.notificationSoundSettings = soundSettings
 
-        log("[Settings] Saved: org=\(org), team=\(team), interval=\(Int(interval))s")
+        log("[Settings] Saved: org=\(org), teams=\(parsedTeams.joined(separator: ",")), interval=\(Int(interval))s, sounds=you:\(soundSettings.forYou),team:\(soundSettings.team),others:\(soundSettings.others)")
 
         if orgChanged, let service = githubService {
             Task { await service.resetCache() }
@@ -93,10 +95,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         menuManager.setLoading(true)
         Task {
-            log("[PRMonitor] Fetching PRs...")
+            log("[PRadar] Fetching PRs...")
             let result = await service.fetchMonitoredPRs()
             let now = Date()
-            log("[PRMonitor] \(result.forYou.count) for-you, \(result.team.count) team, \(result.others.count) other(s), \(result.byYou.count) by-you.")
+            log("[PRadar] \(result.forYou.count) for-you, \(result.team.count) team, \(result.others.count) other(s), \(result.byYou.count) by-you.")
 
             await MainActor.run {
                 self.menuManager.updatePRs(forYou: result.forYou, team: result.team, others: result.others, byYou: result.byYou, lastChecked: now)

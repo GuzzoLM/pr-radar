@@ -1,11 +1,11 @@
 #!/bin/bash
 set -e
 
-APP_NAME="PR Monitor"
-BUNDLE_NAME="pr-monitor"
-DMG_NAME="PR-Monitor.dmg"
+APP_NAME="PRadar"
+BUNDLE_NAME="PRadar"
+DMG_NAME="PRadar.dmg"
 BUILD_DIR=".build/release"
-APP_DIR="/tmp/${BUNDLE_NAME}-dmg"
+APP_DIR="/tmp/pradar-dmg"
 APP_BUNDLE="${APP_DIR}/${APP_NAME}.app"
 
 echo "Building ${BUNDLE_NAME}..."
@@ -26,7 +26,7 @@ cat > "${APP_BUNDLE}/Contents/Info.plist" << PLIST
     <key>CFBundleExecutable</key>
     <string>${BUNDLE_NAME}</string>
     <key>CFBundleIdentifier</key>
-    <string>com.burakakinn.pr-monitor</string>
+    <string>com.guzzolm.pradar</string>
     <key>CFBundleName</key>
     <string>${APP_NAME}</string>
     <key>CFBundleDisplayName</key>
