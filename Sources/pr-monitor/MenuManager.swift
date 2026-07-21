@@ -101,7 +101,7 @@ class SettingsView: NSView {
     func reload() {
         let config = Config.shared
         orgField.stringValue = config.teamOrg
-        teamField.stringValue = config.teamSlug
+        teamField.stringValue = config.teamSlugsText
         intervalField.stringValue = "\(Int(config.pollingIntervalSeconds))"
         feedbackLabel.stringValue = ""
     }
@@ -135,9 +135,9 @@ class SettingsView: NSView {
         y += 28
 
         // Team
-        addLabel("Team slug:", x: pad, y: y, width: fieldW)
+        addLabel("Team slugs (comma-separated):", x: pad, y: y, width: fieldW)
         y += 18
-        teamField.placeholderString = "e.g. inbound-systems"
+        teamField.placeholderString = "e.g. visits, visits-main, ai-chat-platform"
         teamField.font = NSFont.systemFont(ofSize: 12)
         teamField.frame = NSRect(x: pad, y: y, width: fieldW, height: 22)
         addSubview(teamField)

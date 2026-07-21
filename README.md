@@ -55,7 +55,7 @@ This builds a release binary and creates an app bundle at `/Applications/pr-moni
 
 1. Open **PR Monitor** from Spotlight or `/Applications`
 2. Click the PR icon in the menu bar
-3. Go to **Settings** and enter your GitHub organization and team slug
+3. Go to **Settings** and enter your GitHub organization and one or more comma-separated team slugs
 4. Click **Save** — the app starts fetching your PRs automatically
 
 ## Auto-start

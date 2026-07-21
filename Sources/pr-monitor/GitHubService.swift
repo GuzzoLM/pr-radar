@@ -76,17 +76,24 @@ actor GitHubService {
     }
 
     func fetchTeamRepos() async {
-        let path = "/orgs/\(Config.shared.teamOrg)/teams/\(Config.shared.teamSlug)/repos?per_page=100"
-        guard let data = await fetchData(path: path) else {
-            log("[Error] Failed to fetch team repos")
-            return
+        var loadedRepos = Set<String>()
+        var archivedCount = 0
+
+        for slug in Config.shared.teamSlugs {
+            let path = "/orgs/\(Config.shared.teamOrg)/teams/\(slug)/repos?per_page=100"
+            guard let data = await fetchData(path: path),
+                  let repos = try? JSONDecoder().decode([GitHubRepo].self, from: data) else {
+                log("[Error] Failed to fetch repos for team \(slug)")
+                continue
+            }
+
+            let active = repos.filter { !$0.archived }
+            loadedRepos.formUnion(active.map { $0.fullName })
+            archivedCount += repos.count - active.count
         }
 
-        if let repos = try? JSONDecoder().decode([GitHubRepo].self, from: data) {
-            let active = repos.filter { !$0.archived }
-            teamRepos = Set(active.map { $0.fullName })
-            log("[Repos] Loaded \(teamRepos.count) team repos (\(repos.count - active.count) archived excluded)")
-        }
+        teamRepos = loadedRepos
+        log("[Repos] Loaded \(teamRepos.count) repos for \(Config.shared.teamSlugs.count) teams (\(archivedCount) archived excluded)")
     }
 
     func fetchMonitoredPRs() async -> FetchResult {
@@ -98,7 +105,7 @@ actor GitHubService {
         // Search for PRs where the user or configured team is review-requested,
         // mentioned, already reviewed, or author.
         async let reviewCandidates = searchPRs(query: "is:pr is:open review-requested:\(Config.shared.currentUser)")
-        async let teamReviewCandidates = searchPRs(query: "is:pr is:open team-review-requested:\(Config.shared.teamOrg)/\(Config.shared.teamSlug)")
+        async let teamReviewCandidates = searchTeamReviewPRs()
         async let mentionCandidates = searchPRs(query: "is:pr is:open mentions:\(Config.shared.currentUser) org:\(Config.shared.teamOrg)")
         async let reviewedCandidates = searchPRs(query: "is:pr is:open reviewed-by:\(Config.shared.currentUser)")
         async let authoredCandidates = searchPRs(query: "is:pr is:open author:\(Config.shared.currentUser)")
@@ -232,6 +239,23 @@ actor GitHubService {
         }
     }
 
+    private func searchTeamReviewPRs() async -> [GitHubSearchItem] {
+        let org = Config.shared.teamOrg
+        return await withTaskGroup(of: [GitHubSearchItem].self) { group in
+            for slug in Config.shared.teamSlugs {
+                group.addTask {
+                    await self.searchPRs(query: "is:pr is:open team-review-requested:\(org)/\(slug)")
+                }
+            }
+
+            var items: [GitHubSearchItem] = []
+            for await results in group {
+                items.append(contentsOf: results)
+            }
+            return items
+        }
+    }
+
     // MARK: - Verification
 
     struct VerificationResult {
@@ -249,7 +273,8 @@ actor GitHubService {
         if let data = await prDetailData {
             if let detail = try? JSONDecoder().decode(GitHubPRDetail.self, from: data) {
                 isDirectlyRequested = detail.requestedReviewers.contains { $0.login == Config.shared.currentUser }
-                isTeamRequested = detail.requestedTeams.contains { $0.slug == Config.shared.teamSlug }
+                let configuredTeams = Set(Config.shared.teamSlugs)
+                isTeamRequested = detail.requestedTeams.contains { configuredTeams.contains($0.slug) }
             }
         }
 

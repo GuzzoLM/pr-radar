@@ -50,7 +50,9 @@ final class Config {
     private enum Keys {
         static let currentUser = "config.currentUser"
         static let teamOrg = "config.teamOrg"
-        static let teamSlug = "config.teamSlug"
+        // Kept as a string key so existing single-team installations migrate
+        // automatically to the comma-separated multi-team format.
+        static let teamSlugs = "config.teamSlug"
         static let pollingInterval = "config.pollingIntervalSeconds"
         static let mutedPRIds = "config.mutedPRIds"
         static let clickedPRIds = "config.clickedPRIds"
@@ -66,9 +68,26 @@ final class Config {
         set { defaults.set(newValue, forKey: Keys.teamOrg) }
     }
 
-    var teamSlug: String {
-        get { defaults.string(forKey: Keys.teamSlug) ?? "" }
-        set { defaults.set(newValue, forKey: Keys.teamSlug) }
+    var teamSlugs: [String] {
+        get { Self.parseTeamSlugs(defaults.string(forKey: Keys.teamSlugs) ?? "") }
+        set { defaults.set(Self.normalizedTeamSlugs(newValue).joined(separator: ", "), forKey: Keys.teamSlugs) }
+    }
+
+    var teamSlugsText: String {
+        teamSlugs.joined(separator: ", ")
+    }
+
+    static func parseTeamSlugs(_ value: String) -> [String] {
+        normalizedTeamSlugs(value.components(separatedBy: CharacterSet(charactersIn: ",\n")))
+    }
+
+    private static func normalizedTeamSlugs(_ values: [String]) -> [String] {
+        var seen = Set<String>()
+        return values.compactMap { value in
+            let slug = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !slug.isEmpty, seen.insert(slug).inserted else { return nil }
+            return slug
+        }
     }
 
     var pollingIntervalSeconds: TimeInterval {
@@ -97,7 +116,7 @@ final class Config {
     func isPRClicked(_ id: Int) -> Bool { clickedPRIds.contains(id) }
 
     var isConfigured: Bool {
-        !teamOrg.isEmpty && !teamSlug.isEmpty
+        !teamOrg.isEmpty && !teamSlugs.isEmpty
     }
 }
 
