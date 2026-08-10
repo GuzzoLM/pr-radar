@@ -1,0 +1,117 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing v-prefixed tag to release
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x86_64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Build
+        run: swift build -c release
+
+      - name: Stage binary
+        run: |
+          BIN_DIR="$(swift build -c release --show-bin-path)"
+          mkdir artifact
+          cp "$BIN_DIR/PRadar" "artifact/PRadar-${{ matrix.arch }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pradar-${{ matrix.arch }}
+          path: artifact/PRadar-${{ matrix.arch }}
+
+  release:
+    needs: build
+    runs-on: macos-15
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Validate release tag
+        run: |
+          if [[ ! "${RELEASE_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Release tag must look like v1.2.3"
+            exit 1
+          fi
+
+      - name: Check tap token
+        env:
+          TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+        run: |
+          if [[ -z "$TAP_GITHUB_TOKEN" ]]; then
+            echo "TAP_GITHUB_TOKEN must have contents:write access to GuzzoLM/homebrew-tap"
+            exit 1
+          fi
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: pradar-*
+          path: binaries
+          merge-multiple: true
+
+      - name: Create universal app and DMG
+        run: |
+          VERSION="${RELEASE_TAG#v}"
+          lipo -create binaries/PRadar-arm64 binaries/PRadar-x86_64 -output PRadar
+          scripts/package-app.sh PRadar "$VERSION" staging
+          hdiutil create -volname PRadar -srcfolder staging -ov -format UDZO "PRadar-${VERSION}.dmg"
+          shasum -a 256 "PRadar-${VERSION}.dmg" > "PRadar-${VERSION}.dmg.sha256"
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${RELEASE_TAG#v}"
+          gh release create "$RELEASE_TAG" \
+            "PRadar-${VERSION}.dmg" \
+            "PRadar-${VERSION}.dmg.sha256" \
+            --verify-tag \
+            --generate-notes \
+            --title "PRadar ${VERSION}"
+
+      - uses: actions/checkout@v4
+        with:
+          repository: GuzzoLM/homebrew-tap
+          token: ${{ secrets.TAP_GITHUB_TOKEN }}
+          path: homebrew-tap
+
+      - name: Update Homebrew cask
+        run: |
+          VERSION="${RELEASE_TAG#v}"
+          SHA256="$(shasum -a 256 "PRadar-${VERSION}.dmg" | awk '{print $1}')"
+          mkdir -p homebrew-tap/Casks
+          sed -e "s/__VERSION__/$VERSION/g" -e "s/__SHA256__/$SHA256/g" .github/pradar.rb.template > homebrew-tap/Casks/pradar.rb
+          cd homebrew-tap
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add Casks/pradar.rb
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "Update PRadar to ${VERSION}"
+          git push

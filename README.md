@@ -42,7 +42,24 @@ A lightweight macOS menu bar app that monitors GitHub pull requests assigned to 
 
 The app reads your GitHub token from `gh auth token` — no manual token setup needed.
 
-## Install
+## Install with Homebrew
+
+```bash
+brew install --cask guzzolm/tap/pradar
+```
+
+Homebrew also installs the required GitHub CLI. Authenticate it before launching
+PRadar for the first time:
+
+```bash
+gh auth login
+```
+
+Because current releases are not Apple-notarized, macOS may block the first
+launch. If it does, open **System Settings → Privacy & Security** and choose
+**Open Anyway** for PRadar.
+
+## Install from source
 
 ```bash
 cd pr-monitor
@@ -50,6 +67,15 @@ bash install.sh
 ```
 
 This builds a release binary and creates an app bundle at `/Applications/PRadar.app`.
+
+## Publishing a release
+
+1. Add a `TAP_GITHUB_TOKEN` Actions secret with `contents: write` access to
+   `GuzzoLM/homebrew-tap`.
+2. Create and push a version tag, for example `git tag v1.0.0 && git push origin v1.0.0`.
+
+The release workflow builds a universal DMG, publishes it on GitHub, and updates
+`Casks/pradar.rb` in the tap. Versions must use a `v`-prefixed numeric tag.
 
 ## First Launch
 
